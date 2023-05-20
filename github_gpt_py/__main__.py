@@ -9,7 +9,9 @@ import exceptions as e
 import github
 from ai import Prompts
 from git import repo
-from langchain.llms import OpenAI
+from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+from langchain.chat_models import ChatOpenAI
+from langchain.schema import HumanMessage, SystemMessage
 
 
 def main():
@@ -37,16 +39,25 @@ def main():
     skip = ["poetry.lock"]
     diff_text = make_git_diff(diff, skip=skip)
 
-    # Initialize an OpenAI Call
-    llm = OpenAI()
+    chat = ChatOpenAI()
 
-    title = llm(Prompts.gitdiff_pull_title.format(diff=diff_text)).strip()
-    body = llm(Prompts.gitdiff_pull_body.format(diff=diff_text)).strip()
+    title = chat([
+            SystemMessage(content="You produce technical, concise responses to questions."),
+            HumanMessage(content=Prompts.gitdiff_pull_title.format(diff=diff_text))
+        ])
 
-    # Push
+    body = chat([
+            SystemMessage(content="You produce technical, concise, responses to questions."),
+            HumanMessage(content=Prompts.gitdiff_pull_body.format(diff=diff_text))
+        ])
+
+
+    # Push & Open PR
     g.push()
-    r = g.create_pull_request(title=title, body=body)
+    r = g.create_pull_request(title=title.content, body=body.content)
+
     print(r)
+    print(r.html_url)
 
 class GitHubRepo:
 
