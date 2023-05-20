@@ -1,12 +1,17 @@
 """Base module for github_gpt_py"""
+import difflib
 import logging
 import os
 import subprocess
 import sys
 
-# from github import Github
+import exceptions as e
 import github
+from ai import Prompts
 from git import repo
+from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
+from langchain.chat_models import ChatOpenAI
+from langchain.schema import HumanMessage, SystemMessage
 
 
 def main():
@@ -17,6 +22,10 @@ def main():
     except IndexError:
         repo_path = './'
 
+    openai_token = os.environ.get('OPENAI_API_KEY')
+    if not openai_token:
+        raise e.PreconditionError("OPENAI_API_KEY not found in environment variable.")
+
     github_token = os.environ.get('GITHUB_TOKEN')
     if not github_token:
         github_token = gh_auth_token()
@@ -25,10 +34,30 @@ def main():
     # Load the Repo
     g = GitHubRepo(repo_path, gh)
 
-    g.push()
-    pr = g.create_pull_request(title="Test PR", body="Test Body")
+    # Get the Diff
+    diff = g.get_diff_from_head()
+    skip = ["poetry.lock"]
+    diff_text = make_git_diff(diff, skip=skip)
 
-    print(pr)
+    chat = ChatOpenAI()
+
+    title = chat([
+            SystemMessage(content="You produce technical, concise responses to questions."),
+            HumanMessage(content=Prompts.gitdiff_pull_title.format(diff=diff_text))
+        ])
+
+    body = chat([
+            SystemMessage(content="You produce technical, concise, responses to questions."),
+            HumanMessage(content=Prompts.gitdiff_pull_body.format(diff=diff_text))
+        ])
+
+
+    # Push & Open PR
+    g.push()
+    r = g.create_pull_request(title=title.content, body=body.content)
+
+    print(r)
+    print(r.html_url)
 
 class GitHubRepo:
 
@@ -44,10 +73,47 @@ class GitHubRepo:
         remote = self._git_repo.remote()
         return remote.push(refspec='%s:%s' % (current_branch.name, current_branch.name))
 
+    def get_diff_from_head(self):
+        """Gets the diff from the remote head of the repo"""
+        r = self._git_repo
+        r.remotes.origin.fetch()
 
-    def create_pull_request(self, title: str, body: str):
-        """Create a pull request on the repo"""
-        self._gh_repo.create_pull(
+        # Get the diff between the current branch and the default branch
+        current_branch = r.active_branch
+        diff = current_branch.commit.diff(self.default_branch)
+        return diff
+
+    def get_pull_request(self):
+        """Gets an open pull requests for this repo"""
+        r = self._gh_repo
+
+        open_pulls = r.get_pulls(state='open')
+        for pull in open_pulls:
+            if pull.head.ref == self.active_branch.name:
+                return pull
+        return None
+
+    def create_pull_request(self, title: str, body: str, atomic=True, dry_run=False):
+        """Create a pull request on the repo from the current branch"""
+
+        # Todo: make this type consistent with create_pull
+        if dry_run:
+            return {
+                "title": title,
+                "body": body,
+                "base": self._gh_repo.default_branch,
+                "head": self._git_repo.active_branch.name,
+            }
+
+        if atomic:
+            # Check if there is already an open pull request
+            pull = self.get_pull_request()
+            if pull:
+                # If there is, update it
+                pull.edit(title=title, body=body)
+                return pull
+
+        return self._gh_repo.create_pull(
             title=title,
             body=body,
             base=self._gh_repo.default_branch,
@@ -66,16 +132,37 @@ class GitHubRepo:
             .split('/')[-1] \
             .split('.')[0]
 
+    @property
+    def default_branch(self):
+        return self._gh_repo.default_branch
 
-def diff_from_head(repo):
-    """Get the diff from the head of the repo"""
+    @property
+    def active_branch(self):
+        return self._git_repo.active_branch
 
-    # Get Default Branch
-    default_branch = repo.git.symbolic_ref("refs/remotes/origin/HEAD")
+def make_git_diff(diff, skip=[]) -> str:
+    """Makes a git diff from changefiles"""
 
-    # Get the Diff
-    diff = repo.git.diff(default_branch)
-    return diff
+    lines = []
+    for item in diff.iter_change_type('M'):
+        if item.a_blob.path in skip:
+            continue
+
+        lines.append("File: " + item.a_blob.path)
+        lines.append("---------------------------------------------------")
+
+        # Get the content of the file in the two versions as lists of lines
+        old_content = item.b_blob.data_stream.read().decode().splitlines()
+        new_content = item.a_blob.data_stream.read().decode().splitlines()
+
+        # Compute the diff using difflib
+        text_diff = difflib.unified_diff(old_content, new_content)
+
+        # Print the diff
+        for line in text_diff:
+            lines.append(line)
+    return '\n'.join(lines)
+
 
 def gh_auth_token() -> str:
     """Login to github using gh auth token"""
