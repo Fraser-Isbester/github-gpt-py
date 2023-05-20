@@ -46,7 +46,7 @@ def main():
 
     # Push
     g.push()
-    r = g.create_pull_request(title=title, body=body, dry_run=True)
+    r = g.create_pull_request(title=title, body=body)
     print(r)
 
 class GitHubRepo:
