@@ -34,15 +34,14 @@ def main():
 
     # Get the Diff
     diff = g.get_diff_from_head()
-    diff_text = make_git_diff(diff)
-
-    print(diff_text)
+    skip = ["poetry.lock"]
+    diff_text = make_git_diff(diff, skip=skip)
 
     # Initialize an OpenAI Call
     llm = OpenAI()
 
-    title = llm(Prompts.gitdiff_pull_title.format(diff=diff_text))
-    body = llm(Prompts.gitdiff_pull_body.format(diff=diff_text))
+    title = llm(Prompts.gitdiff_pull_title.format(diff=diff_text)).strip()
+    body = llm(Prompts.gitdiff_pull_body.format(diff=diff_text)).strip()
 
     # Push
     g.push()
@@ -74,7 +73,7 @@ class GitHubRepo:
         return diff
 
 
-    def create_pull_request(self, title: str, body: str, dry_run=False):
+    def create_pull_request(self, title: str, body: str, atomic=True, dry_run=False):
         """Create a pull request on the repo from the current branch"""
 
         # Todo: make this type consistent with create_pull
@@ -114,11 +113,14 @@ class GitHubRepo:
         return self._gh_repo.default_branch
 
 
-def make_git_diff(diff) -> str:
+def make_git_diff(diff, skip=[]) -> str:
     """Makes a git diff from changefiles"""
 
     lines = []
     for item in diff.iter_change_type('M'):
+        if item.a_blob.path in skip:
+            continue
+
         lines.append("File: " + item.a_blob.path)
         lines.append("---------------------------------------------------")
 
