@@ -26,10 +26,9 @@ def main():
     g = GitHubRepo(repo_path, gh)
 
     g.push()
+    pr = g.create_pull_request(title="Test PR", body="Test Body")
 
-    # r = g.create_pull_request(title="Test PR", body="Test Body")
-
-    # print(r)
+    print(pr)
 
 class GitHubRepo:
 
@@ -41,18 +40,13 @@ class GitHubRepo:
 
     def push(self):
         """Pushes current branch to remote"""
-
-        r = self._git_repo.remote()
-        print(r)
-        p = r.push()
-        print(p)
+        current_branch = self._git_repo.active_branch
+        remote = self._git_repo.remote()
+        return remote.push(refspec='%s:%s' % (current_branch.name, current_branch.name))
 
 
     def create_pull_request(self, title: str, body: str):
         """Create a pull request on the repo"""
-        print("Creating Pull Request with HEAD:", self._git_repo.active_branch.name)
-        print("Creating Pull Request with BASE:", self._gh_repo.default_branch)
-
         self._gh_repo.create_pull(
             title=title,
             body=body,
