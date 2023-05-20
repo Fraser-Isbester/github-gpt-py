@@ -9,7 +9,6 @@ import exceptions as e
 import github
 from ai import Prompts
 from git import repo
-from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 from langchain.chat_models import ChatOpenAI
 from langchain.schema import HumanMessage, SystemMessage
 
@@ -20,13 +19,13 @@ def main():
     try:
         repo_path = sys.argv[1]
     except IndexError:
-        repo_path = './'
+        repo_path = "./"
 
-    openai_token = os.environ.get('OPENAI_API_KEY')
+    openai_token = os.environ.get("OPENAI_API_KEY")
     if not openai_token:
         raise e.PreconditionError("OPENAI_API_KEY not found in environment variable.")
 
-    github_token = os.environ.get('GITHUB_TOKEN')
+    github_token = os.environ.get("GITHUB_TOKEN")
     if not github_token:
         github_token = gh_auth_token()
     gh = github.Github(github_token)
@@ -41,16 +40,23 @@ def main():
 
     chat = ChatOpenAI()
 
-    title = chat([
-            SystemMessage(content="You produce technical, concise responses to questions."),
-            HumanMessage(content=Prompts.gitdiff_pull_title.format(diff=diff_text))
-        ])
+    title = chat(
+        [
+            SystemMessage(
+                content="You produce technical, concise responses to questions."
+            ),
+            HumanMessage(content=Prompts.gitdiff_pull_title.format(diff=diff_text)),
+        ]
+    )
 
-    body = chat([
-            SystemMessage(content="You produce technical, concise, responses to questions."),
-            HumanMessage(content=Prompts.gitdiff_pull_body.format(diff=diff_text))
-        ])
-
+    body = chat(
+        [
+            SystemMessage(
+                content="You produce technical, concise, responses to questions."
+            ),
+            HumanMessage(content=Prompts.gitdiff_pull_body.format(diff=diff_text)),
+        ]
+    )
 
     # Push & Open PR
     g.push()
@@ -59,8 +65,8 @@ def main():
     print(r)
     print(r.html_url)
 
-class GitHubRepo:
 
+class GitHubRepo:
     def __init__(self, repo_path: str, client: github.Github):
         self.repo_path = repo_path
         self.gh = client
@@ -71,7 +77,7 @@ class GitHubRepo:
         """Pushes current branch to remote"""
         current_branch = self._git_repo.active_branch
         remote = self._git_repo.remote()
-        return remote.push(refspec='%s:%s' % (current_branch.name, current_branch.name))
+        return remote.push(refspec="%s:%s" % (current_branch.name, current_branch.name))
 
     def get_diff_from_head(self):
         """Gets the diff from the remote head of the repo"""
@@ -87,7 +93,7 @@ class GitHubRepo:
         """Gets an open pull requests for this repo"""
         r = self._gh_repo
 
-        open_pulls = r.get_pulls(state='open')
+        open_pulls = r.get_pulls(state="open")
         for pull in open_pulls:
             if pull.head.ref == self.active_branch.name:
                 return pull
@@ -122,15 +128,11 @@ class GitHubRepo:
 
     @property
     def owner(self):
-        return self._git_repo.remotes.origin.url \
-            .split('/')[-2] \
-            .split(':')[1]
+        return self._git_repo.remotes.origin.url.split("/")[-2].split(":")[1]
 
     @property
     def name(self):
-        return self._git_repo.remotes.origin.url \
-            .split('/')[-1] \
-            .split('.')[0]
+        return self._git_repo.remotes.origin.url.split("/")[-1].split(".")[0]
 
     @property
     def default_branch(self):
@@ -140,11 +142,12 @@ class GitHubRepo:
     def active_branch(self):
         return self._git_repo.active_branch
 
+
 def make_git_diff(diff, skip=[]) -> str:
     """Makes a git diff from changefiles"""
 
     lines = []
-    for item in diff.iter_change_type('M'):
+    for item in diff.iter_change_type("M"):
         if item.a_blob.path in skip:
             continue
 
@@ -161,14 +164,13 @@ def make_git_diff(diff, skip=[]) -> str:
         # Print the diff
         for line in text_diff:
             lines.append(line)
-    return '\n'.join(lines)
+    return "\n".join(lines)
 
 
 def gh_auth_token() -> str:
     """Login to github using gh auth token"""
     logging.warning(
-        "GITHUB_TOKEN not found in environment variable. " +
-        "Attempting gh auth login."
+        "GITHUB_TOKEN not found in environment variable. " + "Attempting gh auth login."
     )
     try:
         # subprocess.run() returns a CompletedProcess instance
@@ -176,11 +178,11 @@ def gh_auth_token() -> str:
         # check the return code and raise an error if the command failed
         result.check_returncode()
         # return the sanitized output
-        return result.stdout.replace('\n', ' ').strip()
+        return result.stdout.replace("\n", " ").strip()
     except subprocess.CalledProcessError as e:
         logging.error("Error running gh auth token command.")
         raise e
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
