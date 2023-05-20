@@ -72,6 +72,15 @@ class GitHubRepo:
         diff = current_branch.commit.diff(self.default_branch)
         return diff
 
+    def get_pull_request(self):
+        """Gets an open pull requests for this repo"""
+        r = self._gh_repo
+
+        open_pulls = r.get_pulls(state='open')
+        for pull in open_pulls:
+            if pull.head.ref == self.active_branch.name:
+                return pull
+        return None
 
     def create_pull_request(self, title: str, body: str, atomic=True, dry_run=False):
         """Create a pull request on the repo from the current branch"""
@@ -85,16 +94,20 @@ class GitHubRepo:
                 "head": self._git_repo.active_branch.name,
             }
 
-        try:
-            return self._gh_repo.create_pull(
-                title=title,
-                body=body,
-                base=self._gh_repo.default_branch,
-                head=self._git_repo.active_branch.name,
-            )
-        except github.GithubException as e:
-            logging.error("Error creating pull request. Does it already exist?")
-            raise e
+        if atomic:
+            # Check if there is already an open pull request
+            pull = self.get_pull_request()
+            if pull:
+                # If there is, update it
+                pull.edit(title=title, body=body)
+                return pull
+
+        return self._gh_repo.create_pull(
+            title=title,
+            body=body,
+            base=self._gh_repo.default_branch,
+            head=self._git_repo.active_branch.name,
+        )
 
     @property
     def owner(self):
@@ -112,6 +125,9 @@ class GitHubRepo:
     def default_branch(self):
         return self._gh_repo.default_branch
 
+    @property
+    def active_branch(self):
+        return self._git_repo.active_branch
 
 def make_git_diff(diff, skip=[]) -> str:
     """Makes a git diff from changefiles"""
