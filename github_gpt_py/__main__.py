@@ -23,16 +23,13 @@ def main():
     gh = github.Github(github_token)
 
     # Load the Repo
-    git_repo = GitHubRepo(repo_path, gh)
-    # git_repo = repo.Repo(repo_path)
-    # print(git_repo)
+    g = GitHubRepo(repo_path, gh)
 
+    g.push()
 
+    # r = g.create_pull_request(title="Test PR", body="Test Body")
 
-    # Get The Diff
-    # diff = diff_from_head(git_repo)
-
-    # Generate a PR
+    # print(r)
 
 class GitHubRepo:
 
@@ -42,8 +39,20 @@ class GitHubRepo:
         self._git_repo = repo.Repo(repo_path)
         self._gh_repo = self.gh.get_repo(f"{self.owner}/{self.name}")
 
+    def push(self):
+        """Pushes current branch to remote"""
+
+        r = self._git_repo.remote()
+        print(r)
+        p = r.push()
+        print(p)
+
+
     def create_pull_request(self, title: str, body: str):
         """Create a pull request on the repo"""
+        print("Creating Pull Request with HEAD:", self._git_repo.active_branch.name)
+        print("Creating Pull Request with BASE:", self._gh_repo.default_branch)
+
         self._gh_repo.create_pull(
             title=title,
             body=body,
@@ -53,17 +62,15 @@ class GitHubRepo:
 
     @property
     def owner(self):
-        owner = self._git_repo.remotes.origin.url \
+        return self._git_repo.remotes.origin.url \
             .split('/')[-2] \
             .split(':')[1]
-        return owner
 
     @property
     def name(self):
-        repo_name = self._git_repo.remotes.origin.url \
+        return self._git_repo.remotes.origin.url \
             .split('/')[-1] \
             .split('.')[0]
-        return repo_name
 
 
 def diff_from_head(repo):
