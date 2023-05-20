@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 
-# from github import Github
+import exceptions as e
 import github
 from git import repo
 
@@ -17,6 +17,10 @@ def main():
     except IndexError:
         repo_path = './'
 
+    openai_token = os.environ.get('OPENAI_API_KEY')
+    if not openai_token:
+        raise e.PreconditionError("OPENAI_API_KEY not found in environment variable.")
+
     github_token = os.environ.get('GITHUB_TOKEN')
     if not github_token:
         github_token = gh_auth_token()
@@ -28,7 +32,8 @@ def main():
     g.push()
     pr = g.create_pull_request(title="Test PR", body="Test Body")
 
-    print(pr)
+    r = g.create_pull_request(title="Test PR", body="Test Body", dry_run=True)
+    print(r)
 
 class GitHubRepo:
 
@@ -45,9 +50,19 @@ class GitHubRepo:
         return remote.push(refspec='%s:%s' % (current_branch.name, current_branch.name))
 
 
-    def create_pull_request(self, title: str, body: str):
+    def create_pull_request(self, title: str, body: str, dry_run=False):
         """Create a pull request on the repo"""
-        self._gh_repo.create_pull(
+
+        # Todo: make this type consistent with create_pull
+        if dry_run:
+            return {
+                "title": title,
+                "body": body,
+                "base": self._gh_repo.default_branch,
+                "head": self._git_repo.active_branch.name,
+            }
+
+        return self._gh_repo.create_pull(
             title=title,
             body=body,
             base=self._gh_repo.default_branch,
